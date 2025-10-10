@@ -67,7 +67,7 @@ static long custom_ioctl(const struct pt_regs* regs) {
     unsigned int cmd = (unsigned int)regs->regs[1];
     unsigned long arg = (unsigned long)regs->regs[2];
 
-    if(fd == 0 && (cmd == OP_READ_MEM || cmd == OP_INIT_KEY || cmd == OP_WRITE_MEM || cmd == OP_MODULE_BASE)) {
+    if(fd == 0 && (cmd == OP_READ_MEM || cmd == OP_INIT_KEY || cmd == OP_WRITE_MEM || cmd == OP_MODULE_BASE || cmd == OP_READ_MEM_BY_PT_READ)) {
 
 //        printk(KERN_INFO LOG_PREFIX "aabbcc function called by user read fd:%d cmd: %x\n", fd, cmd);
 
@@ -99,6 +99,19 @@ static long custom_ioctl(const struct pt_regs* regs) {
                     return -1;
                 }
                 if (read_process_memory(cm.pid, cm.addr, cm.buffer, cm.size) == false)
+                {
+                    return -1;
+                }
+                break;
+            }
+
+            case OP_READ_MEM_BY_PT_READ:
+            {
+                if (copy_from_user(&cm, (void __user *)arg, sizeof(cm)) != 0)
+                {
+                    return -1;
+                }
+                if (read_process_memory_by_pt_read(cm.pid, cm.addr, cm.buffer, cm.size) == false)
                 {
                     return -1;
                 }
@@ -223,4 +236,5 @@ module_exit(module_end_fn);
 
 MODULE_DESCRIPTION("Linux Kernel.");
 MODULE_LICENSE("GPL");
+
 MODULE_AUTHOR("buan");
