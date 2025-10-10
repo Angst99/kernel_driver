@@ -272,7 +272,7 @@ bool read_process_memory_by_py_read(
 	last_addr = (phy_addr & PAGE_MASK) + mapped_size - 1;
 	if (!mapped_size || last_addr < (phy_addr & PAGE_MASK) || (last_addr & ~PHYS_MASK)) {
 		pr_err("[ovo] Invalid address range last_addr: size=%zu\n", mapped_size);
-        return -EFAULT;
+        return false;
 	}
 	
 	// 计算页面偏移
@@ -282,19 +282,21 @@ bool read_process_memory_by_py_read(
     if (page_offset + size > PAGE_SIZE) {
         pr_err("[ovo] Access crosses page boundary: offset %zu, size %zu\n",
                page_offset, size);
-        return -EINVAL;
+        return false;
     }
 	
 	mutex_lock(&mapper_lock);
 	if (init_mapper() != 0) {
 		pr_err("[ovo] init_mapper failed\n");
 		mutex_unlock(&mapper_lock);
-		return -ENOMEM;
+		return false;
 	}
 	// 映射对齐到页面边界的物理地址
 	map_phys_page(phy_addr & PAGE_MASK);
 	
 	if (copy_to_user(dest, mapper_page + page_offset, size)) {
+		destroy_mapper();
+		mutex_unlock(&mapper_lock);
 		return false;
 	}
 	destroy_mapper();
