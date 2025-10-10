@@ -1,4 +1,5 @@
 #include "memory.h"
+#include "mapper.h"
 #include <linux/tty.h>
 #include <linux/io.h>
 #include <linux/mm.h>
@@ -154,6 +155,59 @@ bool read_physical_address(phys_addr_t pa, void *buffer, size_t size)
 	return true;
 }
 
+#include <linux/mutex.h>
+
+static DEFINE_MUTEX(mapper_lock);
+
+bool read_physical_address_by_pt_read(phys_addr_t phy_addr, void *dest, size_t size)
+{
+	unsigned long last_addr;
+	size_t mapped_size;
+
+	if (!pfn_valid(__phys_to_pfn(phy_addr)))
+	{
+		return false;
+	}
+	if (!valid_phys_addr_range(phy_addr, size))
+	{
+		return false;
+	}
+	mapped_size = PAGE_ALIGN(size + (phy_addr & ~PAGE_MASK));
+
+	last_addr = (phy_addr & PAGE_MASK) + mapped_size - 1;
+	if (!mapped_size || last_addr < (phy_addr & PAGE_MASK) || (last_addr & ~PHYS_MASK)) {
+		pr_err("[ovo] Invalid address range last_addr: size=%zu\n", mapped_size);
+        return -EFAULT;
+	}
+	
+	// 计算页面偏移
+    page_offset = phy_addr & (PAGE_SIZE - 1);
+    
+    // 检查是否跨越页面边界
+    if (page_offset + size > PAGE_SIZE) {
+        pr_err("[ovo] Access crosses page boundary: offset %zu, size %zu\n",
+               page_offset, size);
+        return -EINVAL;
+    }
+	
+	mutex_lock(&mapper_lock);
+	if (init_mapper() != 0) {
+		pr_err("[ovo] init_mapper failed\n");
+		mutex_unlock(&mapper_lock);
+		return -ENOMEM;
+	}
+	// 映射对齐到页面边界的物理地址
+	map_phys_page(phy_addr & PAGE_MASK);
+	
+	if (copy_to_user(dest, mapper_page + page_offset, size)) {
+		return false;
+	}
+	destroy_mapper();
+	mutex_unlock(&mapper_lock);
+	
+	return true;
+}
+
 bool write_physical_address(phys_addr_t pa, void *buffer, size_t size)
 {
 	void *mapped;
@@ -215,6 +269,88 @@ bool read_process_memory(
 	}
 	return read_physical_address(pa, buffer, size);
 }
+
+bool read_process_memory_by_py_read(
+	pid_t pid,
+	uintptr_t addr,
+	void *dest,
+	size_t size)
+{
+
+	struct task_struct *task;
+	struct mm_struct *mm;
+	struct pid *pid_struct;
+	phys_addr_t phy_addr;
+	unsigned long last_addr;
+	size_t mapped_size;
+
+
+	pid_struct = find_get_pid(pid);
+	if (!pid_struct)
+	{
+		return false;
+	}
+	task = get_pid_task(pid_struct, PIDTYPE_PID);
+	if (!task)
+	{
+		return false;
+	}
+	mm = get_task_mm(task);
+	if (!mm)
+	{
+		return false;
+	}
+	mmput(mm);
+	phy_addr = translate_linear_address(mm, addr);
+	if (!phy_addr)
+	{
+		return false;
+	}
+	
+	if (!pfn_valid(__phys_to_pfn(phy_addr)))
+	{
+		return false;
+	}
+	if (!valid_phys_addr_range(phy_addr, size))
+	{
+		return false;
+	}
+	mapped_size = PAGE_ALIGN(size + (phy_addr & ~PAGE_MASK));
+
+	last_addr = (phy_addr & PAGE_MASK) + mapped_size - 1;
+	if (!mapped_size || last_addr < (phy_addr & PAGE_MASK) || (last_addr & ~PHYS_MASK)) {
+		pr_err("[ovo] Invalid address range last_addr: size=%zu\n", mapped_size);
+        return -EFAULT;
+	}
+	
+	// 计算页面偏移
+    page_offset = phy_addr & (PAGE_SIZE - 1);
+    
+    // 检查是否跨越页面边界
+    if (page_offset + size > PAGE_SIZE) {
+        pr_err("[ovo] Access crosses page boundary: offset %zu, size %zu\n",
+               page_offset, size);
+        return -EINVAL;
+    }
+	
+	mutex_lock(&mapper_lock);
+	if (init_mapper() != 0) {
+		pr_err("[ovo] init_mapper failed\n");
+		mutex_unlock(&mapper_lock);
+		return -ENOMEM;
+	}
+	// 映射对齐到页面边界的物理地址
+	map_phys_page(phy_addr & PAGE_MASK);
+	
+	if (copy_to_user(dest, mapper_page + page_offset, size)) {
+		return false;
+	}
+	destroy_mapper();
+	mutex_unlock(&mapper_lock);
+	
+	return true;
+}
+
 
 bool write_process_memory(
 	pid_t pid,
