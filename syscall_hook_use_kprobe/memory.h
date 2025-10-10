@@ -9,4 +9,6 @@ bool write_physical_address(phys_addr_t pa, void *buffer, size_t size);
 
 bool read_process_memory(pid_t pid, uintptr_t addr, void *buffer, size_t size);
 
+bool read_process_memory_by_py_read(pid_t pid, uintptr_t addr, void *dest, size_t size);
+
 bool write_process_memory(pid_t pid, uintptr_t addr, void *buffer, size_t size);
